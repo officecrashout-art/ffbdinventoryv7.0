@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/css/select2.min.css" rel="stylesheet" />
+  
+  <style>
+    :root { --primary: #1abc9c; --bg-dark: #f4f7f6; --bg-card: #ffffff; --border: #dee2e6; }
+    body { font-family: 'Poppins', sans-serif; background: var(--bg-dark); margin: 0; padding: 20px; }
+    .sales-container { max-width: 1300px; margin: 0 auto; background: var(--bg-card); padding: 25px; border-radius: 12px; border: 1px solid var(--border); }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid var(--border); padding-bottom: 10px; }
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 20px; padding: 15px; background: #f9f9f9; border-radius: 8px; }
+    input, select, textarea { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; font-family: inherit; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th { text-align: left; padding: 12px; background: #f1f3f5; font-size: 0.85rem; }
+    td { padding: 10px; border-bottom: 1px solid #eee; }
+    .btn { padding: 10px 20px; border-radius: 8px; cursor: pointer; border: none; font-weight: 500; display: inline-flex; align-items: center; gap: 8px; }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-outline { background: transparent; border: 1px solid var(--border); }
+    #processingOverlay { display: none; position: fixed; inset: 0; background: rgba(255,255,255,0.8); z-index: 2000; align-items: center; justify-content: center; flex-direction: column; }
+    .spinner { border: 4px solid #f3f3f3; border-top: 4px solid var(--primary); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<div class="sales-container">
+  <div class="header">
+    <h2 style="margin:0; color:var(--primary);"><i class="fas fa-file-invoice"></i> New Sales Order</h2>
+    <button class="btn btn-outline" onclick="location.reload()"><i class="fas fa-sync"></i> Reset Form</button>
+  </div>
+
+  <div class="form-grid">
+    <div><label>SO ID</label><div style="display:flex; gap:5px;"><input type="text" id="soID" readonly><button class="btn btn-primary" onclick="soGenID()">ID</button></div></div>
+    <div><label>Invoice #</label><input type="text" id="soInvoice"></div>
+    <div><label>Customer Name</label><input type="text" id="soCustName"></div>
+    <div><label>Contact</label><input type="text" id="soCustContact"></div>
+    <div><label>City <i class="fas fa-plus-circle" style="color:var(--primary); cursor:pointer;" onclick="soAddNewCity()"></i></label><select id="soCustCity"></select></div>
+    <div style="grid-column: span 2;"><label>Full Delivery Address</label><input type="text" id="soCustAddr" placeholder="Street, House, Area..."></div>
+  </div>
+
+  <div class="table-responsive">
+    <table>
+      <thead>
+        <tr>
+          <th>Product Name</th>
+          <th width="120">Size</th>
+          <th width="80">Qty</th>
+          <th width="120">Price</th>
+          <th width="100">Ship</th>
+          <th width="140">Line Total</th>
+          <th width="40"></th>
+        </tr>
+      </thead>
+      <tbody id="soItemsBody"></tbody>
+    </table>
+    <button class="btn btn-outline" style="margin-top:10px;" onclick="soAddItemRow()"><i class="fas fa-plus"></i> Add Product</button>
+  </div>
+
+  <div style="display:flex; justify-content:flex-end; margin-top:20px; border-top:2px solid var(--border); padding-top:20px;">
+    <div style="text-align:right;">
+      <h3 id="soGrandTotal" style="margin-bottom:15px;">Grand Total: ৳0.00</h3>
+      <button class="btn btn-primary" style="padding: 15px 50px;" onclick="soSave()"><i class="fas fa-save"></i> Save Order</button>
+    </div>
+  </div>
+</div>
+
+<div id="processingOverlay"><div class="spinner"></div><p>Saving Order & Syncing Stock...</p></div>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/js/select2.min.js"></script>
+
+<script>
+  let soItems = [];
+
+  document.addEventListener('DOMContentLoaded', soLoadData);
+
+  function soLoadData() {
+    $('#processingOverlay').css('display', 'flex');
+    google.script.run.withSuccessHandler(data => {
+      soItems = data.items;
+      const citySel = $('#soCustCity').empty().append('<option value="">Select City</option>');
+      data.cities.forEach(c => citySel.append(new Option(c, c)));
+      $('#soCustCity').select2();
+      soAddItemRow();
+      $('#processingOverlay').hide();
+    }).getSalesStartupData();
+  }
+
+  function soGenID() { google.script.run.withSuccessHandler(id => $('#soID').val(id)).soGenerateSOID(); }
+
+  function soAddNewCity() {
+    const val = prompt("Enter new City name:");
+    if (val) {
+      $('#processingOverlay').css('display', 'flex');
+      google.script.run.withSuccessHandler(() => { alert("City Added!"); soLoadData(); }).itemAddNewDimension('City', val);
+    }
+  }
+
+  function soAddItemRow() {
+    const rowId = 'row-' + Date.now();
+    $('#soItemsBody').append(`
+      <tr id="${rowId}">
+        <td>
+          <select class="item-sel" onchange="soOnItemChange(this, '${rowId}')" style="width:100%">
+            <option value="">Choose Item...</option>
+            ${soItems.map(i => `<option value="${i['Item ID']}" data-sizes="${i['Size'] || ''}">${i['Item Name']}</option>`).join('')}
+          </select>
+        </td>
+        <td><select class="size-sel"><option value="">-</option></select></td>
+        <td><input type="number" class="qty" value="1" oninput="soCalc()"></td>
+        <td><input type="number" class="price" value="0" oninput="soCalc()"></td>
+        <td><input type="number" class="ship" value="0" oninput="soCalc()"></td>
+        <td class="total" style="font-weight:600;">৳0.00</td>
+        <td><i class="fas fa-trash" style="color:red; cursor:pointer;" onclick="this.closest('tr').remove(); soCalc();"></i></td>
+      </tr>`);
+    $(`#${rowId} .item-sel`).select2();
+  }
+
+  function soOnItemChange(sel, rowId) {
+    const option = sel.options[sel.selectedIndex];
+    const sizes = $(option).data('sizes') || '';
+    const sizeSelect = $(`#${rowId} .size-sel`).empty();
+    if (sizes) sizes.split(',').forEach(s => sizeSelect.append(new Option(s.trim(), s.trim())));
+    else sizeSelect.append(new Option("N/A", "N/A"));
+    soCalc();
+  }
+
+  function soCalc() {
+    let grandTotal = 0;
+    $('#soItemsBody tr').each(function() {
+      const q = parseFloat($(this).find('.qty').val()) || 0;
+      const p = parseFloat($(this).find('.price').val()) || 0;
+      const s = parseFloat($(this).find('.ship').val()) || 0;
+      const total = (q * p) + s;
+      $(this).find('.total').text('৳' + total.toFixed(2));
+      grandTotal += total;
+    });
+    $('#soGrandTotal').text('Grand Total: ৳' + grandTotal.toFixed(2));
+  }
+
+  function soSave() {
+    const totalRaw = $('#soGrandTotal').text().replace('Grand Total: ৳', '');
+    const soData = { id: $('#soID').val(), invoice: $('#soInvoice').val(), totalAmount: parseFloat(totalRaw) };
+    const items = [];
+    $('#soItemsBody tr').each(function() {
+      const itemSel = $(this).find('.item-sel');
+      if (itemSel.val()) {
+        items.push({
+          id: itemSel.val(), name: itemSel.find('option:selected').text(),
+          size: $(this).find('.size-sel').val(), qty: $(this).find('.qty').val(),
+          price: $(this).find('.price').val(), ship: $(this).find('.ship').val(),
+          total: parseFloat($(this).find('.total').text().replace('৳', ''))
+        });
+      }
+    });
+
+    if (!soData.id || !$('#soCustName').val() || items.length === 0) return alert("Complete all required fields.");
+    
+    $('#processingOverlay').css('display', 'flex');
+    google.script.run.withSuccessHandler(() => location.reload()).soSaveOrder(soData, items, {
+      name: $('#soCustName').val(), contact: $('#soCustContact').val(), 
+      city: $('#soCustCity').val(), address: $('#soCustAddr').val(), isNew: true
+    });
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    /* Theme-Aware Styles */
+    .report-container { padding: 5px; }
+    
+    .report-header { 
+      display: flex; 
+      justify-content: space-between; 
+      align-items: center; 
+      margin-bottom: 25px; 
+      background: var(--bg-card); 
+      padding: 20px; 
+      border-radius: 12px; 
+      border: 1px solid var(--border); 
+      box-shadow: var(--shadow);
+    }
+
+    .selector-group { display: flex; gap: 10px; align-items: center; }
+    
+    select { 
+      padding: 10px 15px; 
+      border-radius: 6px; 
+      background: var(--bg-dark); 
+      color: var(--text-main); 
+      border: 1px solid var(--border);
+      font-family: 'Poppins', sans-serif;
+      cursor: pointer;
+    }
+
+    /* Stats Cards */
+    .stats-grid { 
+      display: grid; 
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); 
+      gap: 20px; 
+      margin-bottom: 30px; 
+    }
+
+    .stat-box { 
+      background: var(--bg-card); 
+      padding: 25px; 
+      border-radius: 12px; 
+      border: 1px solid var(--border); 
+      text-align: center; 
+      box-shadow: var(--shadow);
+      transition: transform 0.2s;
+    }
+
+    .stat-box:hover { transform: translateY(-5px); }
+    .stat-box h4 { margin: 0; font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
+    .stat-box p { margin: 12px 0 0; font-size: 1.8rem; font-weight: 600; }
+
+    /* Tables */
+    .report-card { 
+      background: var(--bg-card); 
+      padding: 25px; 
+      border-radius: 12px; 
+      border: 1px solid var(--border); 
+      box-shadow: var(--shadow);
+    }
+
+    h3 { color: var(--text-main); margin-bottom: 20px; font-weight: 500; }
+
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; padding: 12px; border-bottom: 2px solid var(--border); }
+    td { padding: 12px; border-bottom: 1px solid var(--border); color: var(--text-main); }
+
+    #loading-mask {
+      display: none;
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.1);
+      z-index: 5;
+      border-radius: 12px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="report-container">
+  <div class="report-header">
+    <div>
+      <h2 style="margin:0; color:var(--primary);">Business Performance</h2>
+      <p style="margin:5px 0 0; color:var(--text-muted); font-size:0.85rem;">Profit & Loss Analysis</p>
+    </div>
+    <div class="selector-group">
+      <select id="reportMonth" onchange="loadReport()">
+        <option value="0">January</option><option value="1">February</option>
+        <option value="2">March</option><option value="3">April</option>
+        <option value="4">May</option><option value="5">June</option>
+        <option value="6">July</option><option value="7">August</option>
+        <option value="8">September</option><option value="9">October</option>
+        <option value="10">November</option><option value="11">December</option>
+      </select>
+      <select id="reportYear" onchange="loadReport()">
+        <option value="2024">2024</option>
+        <option value="2025">2025</option>
+        <option value="2026">2026</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-box">
+      <h4>Total Revenue</h4>
+      <p id="revVal" style="color: var(--secondary);">৳0</p>
+    </div>
+    <div class="stat-box">
+      <h4>Cost of Goods (PO)</h4>
+      <p id="expVal" style="color: var(--error);">৳0</p>
+    </div>
+    <div class="stat-box">
+      <h4>Net Profit</h4>
+      <p id="profitVal" style="color: var(--primary);">৳0</p>
+    </div>
+    <div class="stat-box">
+      <h4>Cash Flow</h4>
+      <p id="collVal">৳0</p>
+    </div>
+  </div>
+
+  <div class="report-card" style="position:relative;">
+    <div id="loading-mask"></div>
+    <h3><i class="fas fa-trophy" style="color:gold;"></i> Top Selling Items (This Month)</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Item Name</th>
+          <th style="text-align:right;">Units Sold</th>
+        </tr>
+      </thead>
+      <tbody id="topItemsBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const d = new Date();
+    document.getElementById('reportMonth').value = d.getMonth();
+    document.getElementById('reportYear').value = d.getFullYear();
+    loadReport();
+  });
+
+  function loadReport() {
+    const month = document.getElementById('reportMonth').value;
+    const year = document.getElementById('reportYear').value;
+    const mask = document.getElementById('loading-mask');
+    
+    mask.style.display = 'block';
+    
+    google.script.run.withSuccessHandler(data => {
+      mask.style.display = 'none';
+      
+      // Update values
+      document.getElementById('revVal').innerText = '৳' + data.revenue.toLocaleString();
+      document.getElementById('expVal').innerText = '৳' + data.expense.toLocaleString();
+      document.getElementById('collVal').innerText = '৳' + data.received.toLocaleString();
+      
+      // Profit Color Logic
+      const profitEl = document.getElementById('profitVal');
+      profitEl.innerText = '৳' + data.profit.toLocaleString();
+      profitEl.style.color = data.profit >= 0 ? 'var(--primary)' : 'var(--error)';
+
+      // Render Table
+      const tbody = document.getElementById('topItemsBody');
+      if(data.topItems.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="2" style="text-align:center; color:var(--text-muted);">No sales data for this month.</td></tr>';
+      } else {
+        tbody.innerHTML = data.topItems.map(i => `
+          <tr>
+            <td>${i.name}</td>
+            <td style="text-align:right; font-weight:600;">${i.qty}</td>
+          </tr>
+        `).join('');
+      }
+    }).getMonthlyReportData(month, year);
+  }
+</script>
+
+</body>
+</html>

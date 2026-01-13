@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <title>Payments | Fashion Fizz BD</title>
+  <link href="https://fonts.googleapis.com/css?family=Poppins:400,600|Roboto:400,500" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+
+  <style>
+    :root { --primary: #3498db; --dark: #333; --light: #f4f6f8; }
+    body { margin:0; font-family:'Poppins',sans-serif; background: var(--light); color: var(--dark); }
+    .container { padding:20px; }
+    .flex-space { display:flex; align-items:center; justify-content:space-between; margin-bottom: 20px; }
+    button, .btn { background: var(--primary); color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer; }
+    table { width:100%; border-collapse:collapse; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden; }
+    th, td { padding:12px; border:1px solid #e2e2e2; font-size:0.9rem; }
+    th { background:#f1f7ff; }
+    .modal-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:none; align-items:center; justify-content:center; z-index:999; }
+    .modal { background:#fff; border-radius:8px; width:600px; padding:25px; }
+    .form-group { margin-bottom: 15px; }
+    input, select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
+    #ptProcessing { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.8); display:none; align-items:center; justify-content:center; z-index:1000; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="flex-space">
+    <div><h1>Supplier Payments</h1><p>Record money paid against Purchase Orders</p></div>
+    <button onclick="ptOpenNew()"><i class="fa fa-plus"></i> New Payment</button>
+  </div>
+
+  <table id="ptList">
+    <thead>
+      <tr>
+        <th>Date</th><th>Trx ID</th><th>Supplier</th><th>PO ID</th><th>Mode</th><th>Amount Paid</th><th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="ptTableBody"></tbody>
+  </table>
+</div>
+
+<div id="ptProcessing"><i class="fa fa-spinner fa-pulse"></i> &nbsp; Syncing...</div>
+
+<div id="ptModalOverlay" class="modal-overlay">
+  <div class="modal">
+    <h2>New Supplier Payment</h2>
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px;">
+      <div class="form-group"><label>Date</label><input type="text" id="ptDate" class="flatpickr"></div>
+      <div class="form-group"><label>Trx ID</label><input type="text" id="ptID" readonly style="background:#eee"></div>
+      <div class="form-group" style="grid-column: span 2"><label>Supplier</label><select id="ptSupSel"></select></div>
+      <div class="form-group"><label>PO ID</label><select id="ptPOSel"></select></div>
+      <div class="form-group"><label>Amount Paid</label><input type="number" id="ptAmt" step="0.01"></div>
+      <div class="form-group"><label>Payment Mode</label><select id="ptModeSel"></select></div>
+      <div class="form-group"><label>Bill #</label><input type="text" id="ptBill" readonly style="background:#eee"></div>
+    </div>
+    <div style="text-align:right; margin-top:20px;">
+      <button onclick="ptCloseModal()">Cancel</button>
+      <button class="btn" onclick="ptSave()">Save Payment</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let ptData = { suppliers: [], pos: [], payments: [], modes: [] };
+
+  document.addEventListener('DOMContentLoaded', () => {
+    flatpickr(".flatpickr", { dateFormat: "Y-m-d", defaultDate: "today" });
+    ptLoad();
+  });
+
+  function ptLoad() {
+    $("#ptProcessing").css('display','flex');
+    google.script.run.withSuccessHandler(res => {
+      ptData = res;
+      renderTable(res.payments);
+      const sSel = $('#ptSupSel').empty().append('<option value="">Choose Supplier</option>');
+      res.suppliers.forEach(s => sSel.append(new Option(s['Supplier Name'], s['Supplier ID'])));
+      sSel.select2({ dropdownParent: $('#ptModalOverlay') }).on('change', onSupChange);
+      const mSel = $('#ptModeSel').empty().append('<option value="">Select Mode</option>');
+      res.modes.forEach(m => mSel.append(new Option(m, m)));
+      $("#ptProcessing").hide();
+    }).getPaymentStartupData();
+  }
+
+  function renderTable(rows) {
+    document.getElementById('ptTableBody').innerHTML = rows.map(r => `
+      <tr>
+        <td>${r['Trx Date']}</td><td>${r['Trx ID']}</td><td>${r['Supplier Name']}</td>
+        <td>${r['PO ID']}</td><td>${r['PMT Mode']}</td><td>${parseFloat(r['Amount Paid']).toFixed(2)}</td>
+        <td><button onclick="ptDelete('${r['Trx ID']}')"><i class="fa fa-trash"></i></button></td>
+      </tr>`).join('');
+  }
+
+  function onSupChange() {
+    const sid = $(this).val();
+    const poSel = $('#ptPOSel').empty().append('<option value="">Choose PO</option>');
+    ptData.pos.filter(o => o['Supplier ID'] == sid).forEach(o => poSel.append(new Option(`${o['PO ID']} (Bal: ${o['PO Balance']})`, o['PO ID'])));
+    poSel.select2({ dropdownParent: $('#ptModalOverlay') }).on('change', function() {
+      const po = ptData.pos.find(x => x['PO ID'] == $(this).val());
+      if(po) $('#ptBill').val(po['Bill Num']);
+    });
+  }
+
+  function ptOpenNew() {
+    $('#ptModalOverlay').css('display','flex');
+    google.script.run.withSuccessHandler(id => $('#ptID').val(id)).ptGenerateTrxID();
+  }
+
+  function ptCloseModal() { $('#ptModalOverlay').hide(); }
+
+  function ptSave() {
+    const rec = {
+      'Trx Date': $('#ptDate').val(), 'Trx ID': $('#ptID').val(),
+      'Supplier ID': $('#ptSupSel').val(), 'Supplier Name': $('#ptSupSel option:selected').text(),
+      'PO ID': $('#ptPOSel').val(), 'Bill Num': $('#ptBill').val(),
+      'PMT Mode': $('#ptModeSel').val(), 'Amount Paid': parseFloat($('#ptAmt').val())
+    };
+    if(!rec['PO ID'] || isNaN(rec['Amount Paid'])) return alert("Check inputs");
+    $("#ptProcessing").css('display','flex');
+    google.script.run.withSuccessHandler(() => { alert("Payment Saved"); location.reload(); }).ptSaveNewPayment(rec);
+  }
+
+  function ptDelete(id) {
+    if(confirm("Delete this payment?")) {
+      $("#ptProcessing").css('display','flex');
+      google.script.run.withSuccessHandler(() => { alert("Deleted"); location.reload(); }).ptDeletePayment(id);
+    }
+  }
+</script>
+</body>
+</html>

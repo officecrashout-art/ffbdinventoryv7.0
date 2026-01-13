@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <title>Receipts | Fashion Fizz BD</title>
+  <link href="https://fonts.googleapis.com/css?family=Poppins:400,600|Roboto:400,500" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+
+  <style>
+    :root { --primary: #008b8b; --dark: #333; --light: #f4f6f8; }
+    body { margin:0; font-family:'Poppins',sans-serif; background: var(--light); color: var(--dark); }
+    .container { padding:20px; }
+    .flex-space { display:flex; align-items:center; justify-content:space-between; margin-bottom: 20px; }
+    button, .btn { background: var(--primary); color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer; font-size:0.9rem; transition: 0.2s; }
+    button:hover { background: #006f6f; }
+    .btn-outline { background: transparent; border: 1px solid #ccc; color: var(--dark); }
+    table { width:100%; border-collapse:collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    th, td { padding:12px; border:1px solid #e2e2e2; font-size:0.9rem; text-align: left; }
+    th { background:#e8f7f7; font-weight: 600; }
+    .modal-overlay { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); display:none; align-items:center; justify-content:center; z-index:999; }
+    .modal { background:#fff; border-radius:8px; width:600px; padding:25px; box-shadow:0 10px 25px rgba(0,0,0,0.2); }
+    .form-group { margin-bottom: 15px; }
+    .form-group label { display: block; font-weight: 600; font-size: 0.8rem; margin-bottom: 5px; color: #666; }
+    input, select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+    #rcProcessing { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.8); display:none; align-items:center; justify-content:center; z-index:1000; font-weight: bold; color: var(--primary); }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="flex-space">
+    <div><h1>Customer Receipts</h1><p>Record payments received against Sales Orders</p></div>
+    <button onclick="rcOpenNew()"><i class="fa fa-plus"></i> New Receipt</button>
+  </div>
+
+  <table id="rcList">
+    <thead>
+      <tr>
+        <th>Date</th><th>Trx ID</th><th>Customer</th><th>SO ID</th><th>Mode</th><th>Amount</th><th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="rcTableBody"></tbody>
+  </table>
+</div>
+
+<div id="rcProcessing"><i class="fa fa-spinner fa-pulse"></i> &nbsp; Syncing...</div>
+
+<div id="rcModalOverlay" class="modal-overlay">
+  <div class="modal">
+    <h2 id="rcModalTitle">New Receipt</h2>
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px;">
+      <div class="form-group"><label>Date</label><input type="text" id="rcDate" class="flatpickr"></div>
+      <div class="form-group"><label>Trx ID</label><input type="text" id="rcID" readonly style="background:#eee"></div>
+      <div class="form-group" style="grid-column: span 2"><label>Customer</label><select id="rcCustSel"></select></div>
+      <div class="form-group"><label>SO ID</label><select id="rcSOSel"></select></div>
+      <div class="form-group"><label>Amount Received</label><input type="number" id="rcAmt" step="0.01"></div>
+      <div class="form-group"><label>Payment Mode</label><select id="rcModeSel"></select></div>
+      <div class="form-group"><label>Invoice #</label><input type="text" id="rcInv" readonly style="background:#eee"></div>
+    </div>
+    <div style="text-align:right; margin-top:20px;">
+      <button class="btn-outline" onclick="rcCloseModal()">Cancel</button>
+      <button class="btn" onclick="rcSave()">Save Receipt</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let rcData = { customers: [], orders: [], receipts: [], modes: [] };
+
+  document.addEventListener('DOMContentLoaded', () => {
+    flatpickr(".flatpickr", { dateFormat: "Y-m-d", defaultDate: "today" });
+    rcLoad();
+  });
+
+  function rcLoad() {
+    $("#rcProcessing").css('display','flex');
+    google.script.run.withSuccessHandler(res => {
+      rcData = res;
+      renderTable(res.receipts);
+      
+      const cSel = $('#rcCustSel').empty().append('<option value="">Choose Customer</option>');
+      res.customers.forEach(c => cSel.append(new Option(c['Customer Name'], c['Customer ID'])));
+      cSel.select2({ dropdownParent: $('#rcModalOverlay') }).on('change', onCustChange);
+
+      const mSel = $('#rcModeSel').empty().append('<option value="">Select Mode</option>');
+      res.modes.forEach(m => mSel.append(new Option(m, m)));
+      
+      $("#rcProcessing").hide();
+    }).getReceiptStartupData();
+  }
+
+  function renderTable(rows) {
+    document.getElementById('rcTableBody').innerHTML = rows.map(r => `
+      <tr>
+        <td>${r['Trx Date']}</td><td>${r['Trx ID']}</td><td>${r['Customer Name']}</td>
+        <td>${r['SO ID']}</td><td>${r['PMT Mode']}</td><td>${parseFloat(r['Amount Received']).toFixed(2)}</td>
+        <td><button class="btn-outline" onclick="rcDelete('${r['Trx ID']}')"><i class="fa fa-trash"></i></button></td>
+      </tr>`).join('');
+  }
+
+  function onCustChange() {
+    const cid = $(this).val();
+    const soSel = $('#rcSOSel').empty().append('<option value="">Choose SO</option>');
+    rcData.orders.filter(o => o['Customer ID'] == cid).forEach(o => soSel.append(new Option(`${o['SO ID']} (Bal: ${o['SO Balance']})`, o['SO ID'])));
+    soSel.select2({ dropdownParent: $('#rcModalOverlay') }).on('change', function() {
+      const so = rcData.orders.find(x => x['SO ID'] == $(this).val());
+      if(so) $('#rcInv').val(so['Invoice Num']);
+    });
+  }
+
+  function rcOpenNew() {
+    $('#rcModalOverlay').css('display','flex');
+    google.script.run.withSuccessHandler(id => $('#rcID').val(id)).rcGenerateTrxID();
+  }
+
+  function rcCloseModal() { $('#rcModalOverlay').hide(); }
+
+  function rcSave() {
+    const rec = {
+      'Trx Date': $('#rcDate').val(), 'Trx ID': $('#rcID').val(),
+      'Customer ID': $('#rcCustSel').val(), 'Customer Name': $('#rcCustSel option:selected').text(),
+      'SO ID': $('#rcSOSel').val(), 'Invoice Num': $('#rcInv').val(),
+      'PMT Mode': $('#rcModeSel').val(), 'Amount Received': parseFloat($('#rcAmt').val())
+    };
+    if(!rec['SO ID'] || isNaN(rec['Amount Received'])) return alert("Check inputs");
+    $("#rcProcessing").css('display','flex');
+    google.script.run.withSuccessHandler(() => { alert("Receipt Saved"); location.reload(); }).rcSaveNewReceipt(rec);
+  }
+
+  function rcDelete(id) {
+    if(confirm("Delete this receipt?")) {
+      $("#rcProcessing").css('display','flex');
+      google.script.run.withSuccessHandler(() => { alert("Deleted"); location.reload(); }).rcDeleteReceipt(id);
+    }
+  }
+</script>
+</body>
+</html>

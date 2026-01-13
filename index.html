@@ -1,0 +1,78 @@
+<style>
+  .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 25px; }
+  .stat-card { background: var(--bg-card); border: 1px solid var(--border); padding: 20px; border-radius: 12px; box-shadow: var(--shadow); }
+  .stat-card .value { font-size: 1.6rem; font-weight: 600; color: var(--primary); margin: 5px 0; }
+  .stat-card .label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; }
+
+  .chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 20px; }
+  .chart-card { background: var(--bg-card); border: 1px solid var(--border); padding: 20px; border-radius: 12px; box-shadow: var(--shadow); min-height: 320px; }
+  h3 { font-size: 0.95rem; margin-bottom: 15px; font-weight: 500; border-left: 3px solid var(--primary); padding-left: 10px; }
+  #loader { position: fixed; top:0; left:0; width:100%; height:100%; background: var(--bg-dark); display:flex; justify-content:center; align-items:center; z-index:99; flex-direction:column; }
+</style>
+
+<div id="loader"><i class="fas fa-spinner fa-spin fa-2x" style="color:var(--primary)"></i><p>Loading Dashboard...</p></div>
+
+<div class="dashboard-grid">
+  <div class="stat-card"><div class="label">Total Revenue</div><div class="value" id="v1">৳0</div></div>
+  <div class="stat-card"><div class="label">Purchase Cost</div><div class="value" id="v2">৳0</div></div>
+  <div class="stat-card"><div class="label">Total Orders</div><div class="value" id="v3">0</div></div>
+  <div class="stat-card"><div class="label">Net Profit</div><div class="value" id="v4">৳0</div></div>
+</div>
+
+<div class="chart-grid">
+  <div class="chart-card"><h3>Monthly Sales Trend</h3><div id="chartLine"></div></div>
+  <div class="chart-card"><h3>Top 5 Best Sellers</h3><div id="chartBar"></div></div>
+  <div class="chart-card"><h3>Stock by Category</h3><div id="chartPie"></div></div>
+  <div class="chart-card"><h3>Revenue vs Cost</h3><div id="chartDonut"></div></div>
+</div>
+
+<script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+<script>
+  google.charts.load('current', {'packages':['corechart']});
+  google.charts.setOnLoadCallback(initDashboard);
+
+  function initDashboard() {
+    google.script.run.withSuccessHandler(data => {
+      document.getElementById('loader').style.display = 'none';
+      document.getElementById('v1').innerText = '৳' + data.totalSales.toLocaleString();
+      document.getElementById('v2').innerText = '৳' + data.totalPurchases.toLocaleString();
+      document.getElementById('v3').innerText = data.salesCount;
+      document.getElementById('v4').innerText = '৳' + (data.totalSales - data.totalPurchases).toLocaleString();
+      
+      const isDark = document.body.getAttribute('data-theme') === 'dark';
+      const textColor = isDark ? '#e6edf3' : '#2c3e50';
+      const gridColor = isDark ? '#30363d' : '#dee2e6';
+
+      // 1. Line Chart (Trend)
+      const lineData = google.visualization.arrayToDataTable([['Month', 'Sales'], ...data.salesTrend.map(m => [m.month, m.total])]);
+      new google.visualization.LineChart(document.getElementById('chartLine')).draw(lineData, {
+        backgroundColor: 'transparent', colors: ['#3498db'], height: 280,
+        legend: 'none', chartArea:{width:'85%',height:'70%'},
+        hAxis: { textStyle: {color: textColor} }, vAxis: { textStyle: {color: textColor}, gridlines: {color: gridColor} }
+      });
+
+      // 2. Bar Chart (Top Items)
+      const barData = google.visualization.arrayToDataTable([['Item', 'Sold'], ...data.topItems.map(i => [i.name, i.sold])]);
+      new google.visualization.ColumnChart(document.getElementById('chartBar')).draw(barData, {
+        backgroundColor: 'transparent', colors: ['#1abc9c'], height: 280,
+        legend: 'none', chartArea:{width:'85%',height:'70%'},
+        hAxis: { textStyle: {color: textColor} }, vAxis: { textStyle: {color: textColor}, gridlines: {color: gridColor} }
+      });
+
+      // 3. Pie Chart (Category)
+      const pieData = google.visualization.arrayToDataTable([['Category', 'Stock'], ...data.categoryData.map(c => [c.category, c.stock])]);
+      new google.visualization.PieChart(document.getElementById('chartPie')).draw(pieData, {
+        backgroundColor: 'transparent', height: 280, pieHole: 0.4,
+        legend: { textStyle: {color: textColor} }, chartArea:{width:'90%',height:'80%'}
+      });
+
+      // 4. Donut Chart (Summary)
+      const donutData = google.visualization.arrayToDataTable([['Type', 'Val'], ['Revenue', data.totalSales], ['Cost', data.totalPurchases]]);
+      new google.visualization.PieChart(document.getElementById('chartDonut')).draw(donutData, {
+        backgroundColor: 'transparent', colors: ['#1abc9c', '#e74c3c'], height: 280,
+        pieHole: 0.5, legend: { textStyle: {color: textColor} }, chartArea:{width:'90%',height:'80%'}
+      });
+
+    }).getDashboardData();
+  }
+</script>
